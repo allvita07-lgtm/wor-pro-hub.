@@ -1,109 +1,94 @@
 # data.py
 import streamlit as st
-import plotly.graph_objects as go
+import pandas as pd
+from data import HEROES, STRATEGIES  # Importa os dados do outro ficheiro
 
-# --- CONFIGURAÇÃO DE INTERFACE ---
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="WoR Pro Hub", layout="wide", page_icon="⚔️")
 
-# Estilo CSS Profissional (Dark Mode & Cards)
+# Estilo para parecer um App Nativo
 st.markdown("""
     <style>
     .main { background-color: #0d1117; }
-    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #161b22; border-radius: 5px; color: white; }
-    .stTabs [aria-selected="true"] { background-color: #238636; }
-    div[data-testid="stMetricValue"] { font-size: 24px; color: #58a6ff; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #238636; color: white; }
+    .stExpander { background-color: #161b22; border: 1px solid #30363d; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 1. BANCO DE DADOS (DATABASE) ---
-# Aqui incluímos as categorias para facilitar a busca de todos os personagens
-HERO_DB = {
-    "Marksmen": ["Silas", "Hatssut", "Setram", "Aracha", "Idril", "Calypso", "Nyx", "Razaak", "Maul", "Theil", "Brienne"],
-    "Mages": ["Khamet", "Vierna", "Boreas", "Ajax", "Morrigan", "Laseer", "Abomination", "Arve", "Eona", "Greed"],
-    "Fighters": ["Zilitu", "Valderon", "Lust", "Arrogance", "Salazar", "Wrath", "Valerya", "Volka", "Deimos", "Komodo"],
-    "Tanks": ["Olague", "Brokkir", "Torodor", "Regulus", "Baron", "King Harz", "Isolde"],
-    "Healers": ["Elowyn", "Hollow", "Laya", "Sadie", "Vortex", "Midan", "Nisson"]
-}
-
-GR_REQUIREMENTS = {
-    "GR1 (Mages/AoE)": {"Key": ["Khamet", "Vierna", "Boreas", "Eona"], "Strategy": "Necessário Anti-cura e Dano Mágico massivo em área. O boss regenera vida. Use Dolores no centro."},
-    "GR2 (Defense)": {"Key": ["Volka", "Olague", "Sadie", "Baron"], "Strategy": "Estratégia de Recuo (Volka A1). Coloque tanques para absorver o impacto e retire antes da morte."},
-    "GR3 (Piercers)": {"Key": ["Silas", "Idril", "Hatssut", "Aracha"], "Strategy": "Foco em alcance. Idril (A5) limpa as laterais enquanto Silas foca no Boss central."}
-}
-
-# --- 2. ESTADO DO APP (SESSION STATE) ---
+# --- ESTADO DA SESSÃO (MEU TIME) ---
 if 'my_team' not in st.session_state:
     st.session_state.my_team = []
 
-# --- 3. INTERFACE PRINCIPAL ---
-st.title("⚔️ WoR Pro Hub: Strategy & Builds")
+# --- SIDEBAR (NAVEGAÇÃO) ---
+st.sidebar.title("🎮 WoR Control Center")
+page = st.sidebar.radio("Navegar para:", ["🛡️ Meu Time", "📖 Guia Gear Raids", "📑 Lista de Heróis"])
 
-tab1, tab2, tab3 = st.tabs(["📊 My Team & Analysis", "📖 GR Strategy Wiki", "🔍 Hero Encyclopedia"])
+# --- PÁGINA 1: MEU TIME E POSSIBILIDADES ---
+if page == "🛡️ Meu Time":
+    st.title("🛡️ Gestão de Esquadrão")
+    
+    # Interface para adicionar heróis
+    all_heroes = sorted([h for sublist in HEROES.values() for h in sublist])
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        selected_hero = st.selectbox("Escolha um herói da lista:", all_heroes)
+    with col2:
+        if st.button("Adicionar"):
+            if selected_hero not in st.session_state.my_team:
+                st.session_state.my_team.append(selected_hero)
+                st.rerun()
 
-# --- ABA 1: MEU TIME E ANÁLISE ---
-with tab1:
-    st.header("Seu Esquadrão")
-    
-    # Adicionar Heróis ao Time
-    all_names = [name for sublist in HERO_DB.values() for name in sublist]
-    col_add1, col_add2 = st.columns([2, 1])
-    with col_add1:
-        new_hero = st.selectbox("Adicionar Herói ao seu Time:", all_names)
-    with col_add2:
-        if st.button("➕ Adicionar à Conta"):
-            if new_hero not in st.session_state.my_team:
-                st.session_state.my_team.append(new_hero)
-    
-    st.write(f"**Heróis na sua conta:** {', '.join(st.session_state.my_team) if st.session_state.my_team else 'Nenhum'}")
-    
-    if st.button("🗑️ Resetar Time"):
-        st.session_state.my_team = []
-        st.rerun()
+    # Exibição do Time Atual
+    st.subheader("Seu Time Atual")
+    if st.session_state.my_team:
+        cols = st.columns(3)
+        for i, h in enumerate(st.session_state.my_team):
+            cols[i % 3].info(f"👤 {h}")
+        if st.button("🗑️ Limpar Tudo", type="secondary"):
+            st.session_state.my_team = []
+            st.rerun()
+    else:
+        st.write("Nenhum herói adicionado ainda.")
 
     st.markdown("---")
-    st.subheader("🧐 Possibilidade de Progressão (Análise de Stage)")
     
-    target_gr = st.selectbox("Qual Raid você quer testar?", list(GR_REQUIREMENTS.keys()))
-    reqs = GR_REQUIREMENTS[target_gr]
+    # ANÁLISE DE POSSIBILIDADE
+    st.subheader("🔍 Analisador de Progressão")
+    raid_choice = st.selectbox("Em qual Raid você quer testar seu time?", ["GR1", "GR2", "GR3"])
     
-    # Lógica de Verificação
-    matches = [h for h in st.session_state.my_team if h in reqs["Key"]]
-    score = len(matches) / len(reqs["Key"])
+    # MVPs fictícios para o cálculo (ajustável no data.py no futuro)
+    mvps = {
+        "GR1": ["Khamet", "Vierna", "Boreas", "Eona", "Greed", "Dolores"],
+        "GR2": ["Olague", "Baron", "Sadie", "Volka", "Vortex"],
+        "GR3": ["Silas", "Idril", "Hatssut", "Aracha", "Maul", "Razaak"]
+    }
     
-    col_res1, col_res2 = st.columns(2)
-    with col_res1:
-        st.metric("Índice de Preparação", f"{int(score*100)}%")
-        if score > 0.5:
-            st.success("✅ Você tem os heróis base para o Stage 21!")
-        else:
-            st.warning("⚠️ Faltam peças-chave para o Stage 21.")
-            
-    with col_res2:
-        st.write("**Peças que você já tem:**")
-        for m in matches: st.write(f"✔️ {m}")
+    my_mvps = [h for h in st.session_state.my_team if h in mvps[raid_choice]]
+    progresso = len(my_mvps) / 4 # Baseado em ter pelo menos 4 chaves
+    
+    if progresso >= 1.0:
+        st.success(f"🔥 **Possibilidade Alta!** Você tem {len(my_mvps)} heróis chave para {raid_choice}.")
+    elif progresso >= 0.5:
+        st.warning(f"⚖️ **Possibilidade Média.** Você tem alguns heróis ({len(my_mvps)}), mas pode faltar dano ou sustain.")
+    else:
+        st.error("❌ **Possibilidade Baixa.** Faltam heróis específicos para as mecânicas desta Raid.")
 
-# --- ABA 2: WIKI DE ESTRATÉGIAS ---
-with tab2:
-    st.header("Manual de Gear Raids (Stage 19-21)")
-    for gr, data in GR_REQUIREMENTS.items():
-        with st.expander(f"📌 {gr} - Guia Técnico"):
-            st.write(f"**Estratégia:** {data['Strategy']}")
-            st.write("**Heróis Recomendados (MVP):**")
-            st.code(", ".join(data["Key"]))
-            
-    st.info("💡 Lembre-se: Dolores e Hollow são suportes universais obrigatórios para quase todos os Stages 21.")
+# --- PÁGINA 2: GUIA GEAR RAIDS ---
+elif page == "📖 Guia Gear Raids":
+    st.title("📖 Tutoriais de Estratégia")
+    st.write("Dicas essenciais para superar os estágios 19, 20 e 21.")
+    
+    for raid, info in STRATEGIES.items():
+        with st.expander(f"📌 {raid} - Ver Detalhes"):
+            st.write(info)
+            st.markdown(f"**Recomendação:** Foque em heróis que aplicam debuffs específicos para {raid}.")
 
-# --- ABA 3: ENCICLOPÉDIA ---
-with tab3:
-    st.header("Biblioteca de Personagens")
-    for cat, members in HERO_DB.items():
-        with st.expander(f"{cat} ({len(members)})"):
-            cols = st.columns(3)
-            for i, m in enumerate(members):
-                cols[i % 3].write(f"• {m}")
+# --- PÁGINA 3: LISTA DE HERÓIS ---
+elif page == "📑 Lista de Heróis":
+    st.title("📑 Biblioteca Completa")
+    for classe, nomes in HEROES.items():
+        with st.expander(f"{classe} ({len(nomes)})"):
+            st.write(", ".join(sorted(nomes)))
 
-# --- RODAPÉ ---
 st.sidebar.markdown("---")
-st.sidebar.write("🟢 **Status da Conta:** " + ("Endgame" if len(st.session_state.my_team) > 10 else "Midgame"))
-st.sidebar.caption("WoR Pro Hub v4.0 | Desenvolvido para Elite Players")
+st.sidebar.caption("Versão Organizada 3.0")
